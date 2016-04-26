@@ -30,12 +30,16 @@ paymentCalc <- function(principle, rate, years) {
 }
 
 remainingCalc <- function(principle, rate, years, p){
-    MRate <- rate / MONTHS_YEARLY;
+    MRate <- (rate / MONTHS_YEARLY);
     n <- (p * MONTHS_YEARLY);
     FV <- principle * ((1 + MRate) ^ n);
     payment <- paymentCalc(principle, rate, years);
-    FVa <- (((1 + MRate) ^ n)/MRate);
-    return (-1 * (FV - (payment * FVa)));
+    FVa <- ((((1 + MRate) ^ n) - 1)/MRate);
+    if (years > p) {
+        return (FV - (payment * FVa));
+    }else{
+        return (0);
+    }
 }
 
 # Calculates the interest accrued on an investment
@@ -133,7 +137,7 @@ calculateAssetCosts <- function(T){
         purch <- getPurch(T, a, renewal);
         if ( T$age == a$Purchase.Age && T$MOY == 1){
             T$Total.Big.Costs <- ((T$Total.Big.Costs + (purch * a$Down.Payment)) + (purch * a$Sales.Tax.Rate));
-            log("Making a purchase for", A[i,1], purch, "at age", T$age, "With payments of", paymentCalc((T$Total.Big.Costs + (purch * a$Down.Payment)), a$Rate, a$Years.On.Loan));
+            log("Making a purchase for", A[i,1], purch, "at age", T$age, "With payments of", paymentCalc((purch - (purch * a$Down.Payment)), a$Rate, a$Years.On.Loan));
         }
         if(T$age > a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1){ # Renewal
             if(a$Keep.After.Renewal != "TRUE"){
