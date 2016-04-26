@@ -1,3 +1,4 @@
+#!/usr/bin/env Rscript
 12 -> MONTHS_YEARLY;
 exp(1) -> E;
 
