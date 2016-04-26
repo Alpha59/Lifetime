@@ -18,6 +18,7 @@ In = read.xls("config.xlsx", sheet="Income", verbose=FALSE);
 
 C = data.frame(Savings.Cumulative=V$Savings.Initial, Retirement.Cumulative=V$Retirement.Initial);
 
+# JavaScript esq printing of multiple variables
 log <- function(...){
     print(paste(...))
 }
@@ -29,6 +30,7 @@ paymentCalc <- function(principle, rate, years) {
     return (principle * (( MRate * ((1 + MRate) ^ n)) / (((1 + MRate) ^ n) - 1)))
 }
 
+# Calculates the remaining balance of a loan after p years
 remainingCalc <- function(principle, rate, years, p){
     MRate <- (rate / MONTHS_YEARLY);
     n <- (p * MONTHS_YEARLY);
@@ -58,6 +60,7 @@ yearlyIncreaseCalcExpo <- function(Base, rate, year){
     return (Base * (1 + rate) ^ year);
 }
 
+# Returns the cumulative calculation after interest is applied to the original
 cumulativeCalculator <- function(principle, rate, added){
     return (interestCalc(principle, rate, 1) + added);
 }
@@ -71,6 +74,7 @@ futureCollegeCostCalc <- function(yearsUntil, yearsIn, students){
     return (cost);
 }
 
+# Generates the object for this point in time.
 timeCalc <- function(i){
     month <- i;
     MOY <- (((i + (V$Starting.Month - 1))%% MONTHS_YEARLY ) + 1);
@@ -81,7 +85,7 @@ timeCalc <- function(i){
     return (data.frame(MOY, year, age, Savings.Cumulative, Retirement.Cumulative));
 }
 
-
+# Calculates the set costs accounting for an increase do to inflation.
 calculateSetCosts <- function(T){
     # Daily Expenses * 30
     T$daily <- (yearlyIncreaseCalcLinear(sum(D$Expense), V$Inflation, T$year) * 30.4375);
@@ -102,6 +106,7 @@ calculateSetCosts <- function(T){
     return (T);
 }
 
+# Calculates the income/tax/retirement at this point in time
 calculateIncomeTaxAndRetirement <- function(T){
     # Amount Earned
     T$Income <- (yearlyIncreaseCalcLinear(sum(In$Salary.Base), mean(In$Raise), T$year) / 12);
