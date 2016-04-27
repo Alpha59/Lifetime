@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 12 -> MONTHS_YEARLY;
+30.4375 -> DAYS_PER_MONTH;
+4.348125 -> WEEKS_PER_MONTH;
 exp(1) -> E;
 
 options(width = 280)
@@ -85,11 +87,15 @@ timeCalc <- function(i){
     return (data.frame(MOY, year, age, Savings.Cumulative, Retirement.Cumulative));
 }
 
+inflate <- function(val, T){
+    return (yeralyIncreaseCalcExpo(val, V$Inflation, T$year));
+}
+
 # Gets the purchase price a specific renewal (initial purchase is renewal 0)
 getPurch <- function(T, a, renewal){
-    purch <- (yearlyIncreaseCalcExpo((a$Price * (a$Preferred.Increase^renewal)) * V$Outfitting.Percent, V$Inflation, T$year));
+    purch <- (inflate((a$Price * (a$Preferred.Increase^renewal)) * V$Outfitting.Percent, T));
     if(purch > a$Max.Price){
-        purch <- (yearlyIncreaseCalcExpo(a$Max.Price, V$Inflation, T$year))
+        purch <- (inflate(a$Max.Price, T))
     }
     return (purch);
 }
@@ -97,19 +103,19 @@ getPurch <- function(T, a, renewal){
 # Calculates the set costs accounting for an increase do to inflation.
 calculateSetCosts <- function(T){
     # Daily Expenses * 30
-    T$daily <- (yearlyIncreaseCalcExpo(sum(D$Expense), V$Inflation, T$year) * 30.4375);
+    T$daily <- (inflate(sum(D$Expense), T) * DAYS_PER_MONTH);
 
     # Weekly Expenses * 4
-    T$weekly <- (yearlyIncreaseCalcExpo(sum(W$Expense), V$Inflation, T$year) * 4.348125);
+    T$weekly <- (inflate(sum(W$Expense), T) * WEEKS_PER_MONTH);
 
     # Monthly Expenses
-    T$monthly <- (yearlyIncreaseCalcExpo(sum(M$Expense), V$Inflation, T$year));
+    T$monthly <- (inflate(sum(M$Expense), T));
 
     # Yearly Expenses
-    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, yearlyIncreaseCalcExpo(sum(Y$Expense), V$Inflation, T$year), 0));
+    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, inflate(sum(Y$Expense), T), 0));
 
     # 5 Year Expenses
-    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), yearlyIncreaseCalcExpo(sum(Y5$Expense), V$Inflation, T$year), 0));
+    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), inflate(sum(Y5$Expense), T), 0));
 
     T$Total.Set.Costs <- (T$Yearly5 + T$Yearly + T$monthly + T$daily);
     return (T);
@@ -168,7 +174,7 @@ calculateAssetCosts <- function(T){
             years <- ((a$Purchase.Age - V$Current.Age) + (a$Renewal * renewal))
             Loan.Amount <- (purch - (purch * a$Down.Payment));
             payment <- ((purch * yearlyIncreaseCalcLinear(a$Tax.Rate/MONTHS_YEARLY, V$Tax.Rate.Increase, T$year)) + # Tax Yearly
-                        yearlyIncreaseCalcExpo((purch * (a$Maintance.Percent/MONTHS_YEARLY + a$Utility.Percent/MONTHS_YEARLY)) + a$Monthly.Cost + a$Storage.Fee, V$Inflation, years)) # Yearly Costs
+                        inflate((purch * (a$Maintance.Percent/MONTHS_YEARLY + a$Utility.Percent/MONTHS_YEARLY)) + a$Monthly.Cost + a$Storage.Fee, T)) # Yearly Costs
 
             if(T$age <= (a$Purchase.Age + (renewal*a$Renewal) + a$Years.On.Loan)){
                 payment <- (payment + (paymentCalc(Loan.Amount, a$Rate, a$Years.On.Loan))) # Base Payment
@@ -190,7 +196,7 @@ calculateThisMonth <- function(T){
     T <- (calculateAssetCosts(T));
 
     # Savings left over
-    T$Pocket.Spending = (yearlyIncreaseCalcExpo(V$Pocket.Spending, V$Inflation, T$year));
+    T$Pocket.Spending = (inflate(V$Pocket.Spending, T));
     T$Savings <- (((T$Leftover - T$Total.Set.Costs) - T$Total.Big.Costs) - T$Pocket.Spending);
     T$Savings.Cumulative <- C$Savings.Cumulative <<- (cumulativeCalculator(C$Savings.Cumulative, V$Return.On.Savings, T$Savings));
     #log(T);
