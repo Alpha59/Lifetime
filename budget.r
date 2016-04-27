@@ -169,17 +169,14 @@ initialPurchase <- function(T, a, renewal, purch){
     return (max(0, (T$Total.Big.Costs + (purch * a$Down.Payment)) + (purch * a$Sales.Tax.Rate)))
 }
 
-sellPurch <- function(T, years, a, renewal, purch){
-    T$Sale.Price <- max(0, yearlyIncreaseCalcExpo(getPurch(years, a, renewal-1), a$Appreciation, a$Renewal) * V$Total.Return.Post.Sale)
+sellPurch <- function(T, years, a, renewal){
+    purch <- getPurch(years, a, renewal-1);
+    T$Sale.Price <- max(0, yearlyIncreaseCalcExpo(purch, a$Appreciation, a$Renewal) * V$Total.Return.Post.Sale)
     remaining <- remainingCalc(getPurch(years,a,renewal-1), a$Rate, a$Years.On.Loan, a$Renewal);
     T$Total.Big.Costs <- ((T$Total.Big.Costs + remaining) - T$Sale.Price);
-    log("Selling a purchase", renewal, "for", a[,1], purch, "at age", T$age, "having sold the previous at", T$Sale.Price, "-", remaining, "=", T$Sale.Price-remaining);
+    log("Selling a purchase", renewal-1, "for", a[,1], purch, "at age", T$age, "having sold the at", T$Sale.Price, "-", remaining, "=", T$Sale.Price-remaining);
     return (T);
 }
-
-
-
-
 
 calculateAssetCosts <- function(T){
     T$Total.Big.Costs <- 0;
@@ -195,13 +192,13 @@ calculateAssetCosts <- function(T){
 	        #      ( 34  - 27 ) % 3 != 0
 	        #      ( 27  - 27 ) % 3 == 0
         # This logic appears to work
-        if(T$age >= a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1){ # Renewal
+        if(T$age >= a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1 && a$Final.Purchase.Age >= T$age){ # Renewal
             purch <- getPurch(T, a, renewal);
 
             # If you have already purchased this item in the past
             # And you are selling it before buying a new one.
             if ( T$age != a$Purchase.Age && a$Keep.After.Renewal != "TRUE"){
-                T <- sellPurch(T, years-a$Renewal, a, renewal, purch)
+                T <- sellPurch(T, years-a$Renewal, a, renewal)
             }
 
             # Make the Down Payment/Sales Tax
@@ -232,16 +229,6 @@ calculateAssetCosts <- function(T){
     }
     return (T);
 }
-
-
-
-
-
-
-
-
-
-
 
 # The primary function, this oversees the flow of data.
 # This function appears to work
@@ -285,7 +272,8 @@ legend('topleft', c('Leftover', 'Income', 'Total Set Costs', 'Pocket Spending', 
 
 plot(age.range, TArray$Leftover, col="green", pch=20);
 points(age.range, TArray$Total.Big.Costs + TArray$Pocket.Spending + TArray$Total.Set.Costs, col="red", pch=20);
-legend('topleft', c('Leftover', 'Out'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'red'));
+points(age.range, inflate(4000, age.range - V$Current.Age))
+legend('topleft', c('Leftover', 'Out', '$4k'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'red', 'black'));
 
 plot(age.range, TArray$Savings.Cumulative, col="red", pch=20);
 plot(age.range, TArray$Salary, col="green", pch=20);
