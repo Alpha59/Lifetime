@@ -52,8 +52,7 @@ interestCalc <- function(principle, rate, month) {
 
 # Calculates the price increase Linearly
 yearlyIncreaseCalcLinear <- function(Base, rate, year){
-    monthly <- Base/MONTHS_YEARLY;
-    return (Base + (Base * (rate * year)));
+    return (Base * (1 + (rate * year)));
 }
 
 # Calculates a price increase Exponentially
@@ -86,22 +85,31 @@ timeCalc <- function(i){
     return (data.frame(MOY, year, age, Savings.Cumulative, Retirement.Cumulative));
 }
 
+# Gets the purchase price a specific renewal (initial purchase is renewal 0)
+getPurch <- function(T, a, renewal){
+    purch <- (yearlyIncreaseCalcExpo((a$Price * (a$Preferred.Increase^renewal)) * V$Outfitting.Percent, V$Inflation, T$year));
+    if(purch > a$Max.Price){
+        purch <- (yearlyIncreaseCalcExpo(a$Max.Price, V$Inflation, T$year))
+    }
+    return (purch);
+}
+
 # Calculates the set costs accounting for an increase do to inflation.
 calculateSetCosts <- function(T){
     # Daily Expenses * 30
-    T$daily <- (yearlyIncreaseCalcLinear(sum(D$Expense), V$Inflation, T$year) * 30.4375);
+    T$daily <- (yearlyIncreaseCalcExpo(sum(D$Expense), V$Inflation, T$year) * 30.4375);
 
     # Weekly Expenses * 4
-    T$weekly <- (yearlyIncreaseCalcLinear(sum(W$Expense), V$Inflation, T$year) * 4.348125);
+    T$weekly <- (yearlyIncreaseCalcExpo(sum(W$Expense), V$Inflation, T$year) * 4.348125);
 
     # Monthly Expenses
-    T$monthly <- (yearlyIncreaseCalcLinear(sum(M$Expense), V$Inflation, T$year));
+    T$monthly <- (yearlyIncreaseCalcExpo(sum(M$Expense), V$Inflation, T$year));
 
     # Yearly Expenses
-    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, yearlyIncreaseCalcLinear(sum(Y$Expense), V$Inflation, T$year), 0));
+    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, yearlyIncreaseCalcExpo(sum(Y$Expense), V$Inflation, T$year), 0));
 
     # 5 Year Expenses
-    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), yearlyIncreaseCalcLinear(sum(Y5$Expense), V$Inflation, T$year), 0));
+    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), yearlyIncreaseCalcExpo(sum(Y5$Expense), V$Inflation, T$year), 0));
 
     T$Total.Set.Costs <- (T$Yearly5 + T$Yearly + T$monthly + T$daily);
     return (T);
@@ -110,13 +118,20 @@ calculateSetCosts <- function(T){
 # Calculates the income/tax/retirement at this point in time
 calculateIncomeTaxAndRetirement <- function(T){
     # Amount Earned
-    T$Income <- (yearlyIncreaseCalcLinear(sum(In$Salary.Base), mean(In$Raise), T$year) / 12);
     if ( T$age < V$Age.Of.Retirement ) {
+        T$Income <- 0
+        for ( i in 1:nrow(In)){
+            iN <- In[i,];
+            T$Income <- (T$Income + (yearlyIncreaseCalcExpo(iN$Salary.Base, iN$Raise, T$year) / 12));
+        }
         T$Retirement <- (T$Income * V$Salary.Percent.To.Retirement);
         T$Retirement.Cumulative <- C$Retirement.Cumulative <<- (cumulativeCalculator(C$Retirement.Cumulative, V$Return.On.Retirement, T$Retirement));
     } else {
-        T$Income <- (T$Income * V$Salary.Percent.Usage);
-        T$Retirement.Cumulative <- C$Retirement.Cumulative <<- (cumulativeCalculator(C$Retirement.Cumulative, V$Return.Post.Retirement, -T$Income))
+        workingYears <- (V$Age.Of.Retirement - V$Current.Age);
+        Final <- (yearlyIncreaseCalcExpo(sum(In$Salary.Base), mean(In$Raise), workingYears) / 12);
+        Income <- (yearlyIncreaseCalcExpo(Final, V$Raise, (T$year - workingYears)));
+        T$Income <- (Income * V$Salary.Percent.Usage);
+        T$Retirement.Cumulative <- C$Retirement.Cumulative <<- (cumulativeCalculator(C$Retirement.Cumulative, V$Return.Post.Retirement, (-1 * T$Income)))
         T$Retirement <- 0;
     }
     # For This month
@@ -124,14 +139,6 @@ calculateIncomeTaxAndRetirement <- function(T){
     T$Leftover <- ((T$Income - T$Retirement) - T$Tax.Paid)
     T$Salary <- T$Income * 12;
     return (T);
-}
-
-getPurch <- function(T, a, renewal){
-    purch <- (yearlyIncreaseCalcLinear((a$Price * (V$Preferred.Increase^renewal)) * V$Outfitting.Percent, V$Inflation, T$year));
-    if(purch > a$Max.Price){
-        purch <- (yearlyIncreaseCalcLinear(a$Max.Price, V$Inflation, T$year))
-    }
-    return (purch);
 }
 
 calculateAssetCosts <- function(T){
@@ -147,19 +154,26 @@ calculateAssetCosts <- function(T){
         }
         if(T$age > a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1){ # Renewal
             if(a$Keep.After.Renewal != "TRUE"){
-                T$Sale.Price <- (yearlyIncreaseCalcLinear(getPurch(T, a, renewal-1), a$Appreciation, a$Renewal) * V$Total.Return.Post.Sale)
+                T$Sale.Price <- (yearlyIncreaseCalcExpo(getPurch(T, a, renewal-1), a$Appreciation, a$Renewal) * V$Total.Return.Post.Sale)
+                if(T$Sale.Price < 0){
+                    T$Sale.Price <- 0;
+                }
                 remaining <- remainingCalc(getPurch(T,a,renewal-1), a$Rate, a$Years.On.Loan, a$Renewal);
                 T$Total.Big.Costs <- (T$Total.Big.Costs - T$Sale.Price) + remaining;
             }
             T$Total.Big.Costs <- ((T$Total.Big.Costs + (purch * a$Down.Payment)) + (purch * a$Sales.Tax.Rate))
             log("Renewing a purchase", renewal, A[i,1], "for", purch, "at age", T$age, "having sold the previous at", T$Sale.Price, "-", remaining, "=", T$Sale.Price-remaining);
         }
-        if ( T$age >= a$Purchase.Age && T$age <= (a$Purchase.Age + (renewal*a$Renewal) + a$Years.On.Loan)){ # Payment
+        if ( T$age >= a$Purchase.Age){ # Payment
             years <- ((a$Purchase.Age - V$Current.Age) + (a$Renewal * renewal))
             Loan.Amount <- (purch - (purch * a$Down.Payment));
-            payment <- ((paymentCalc(Loan.Amount, a$Rate, a$Years.On.Loan)) + # Base Payment
-                        (purch * yearlyIncreaseCalcLinear(a$Tax.Rate/MONTHS_YEARLY, V$Tax.Rate.Increase, T$year)) + # Tax Yearly
-                        yearlyIncreaseCalcLinear((purch * (a$Maintance.Percent/MONTHS_YEARLY + a$Utility.Percent/MONTHS_YEARLY)) + a$Monthly.Cost + a$Storage.Fee, V$Inflation, years)) # Yearly Costs
+            payment <- ((purch * yearlyIncreaseCalcLinear(a$Tax.Rate/MONTHS_YEARLY, V$Tax.Rate.Increase, T$year)) + # Tax Yearly
+                        yearlyIncreaseCalcExpo((purch * (a$Maintance.Percent/MONTHS_YEARLY + a$Utility.Percent/MONTHS_YEARLY)) + a$Monthly.Cost + a$Storage.Fee, V$Inflation, years)) # Yearly Costs
+
+            if(T$age <= (a$Purchase.Age + (renewal*a$Renewal) + a$Years.On.Loan)){
+                payment <- (payment + (paymentCalc(Loan.Amount, a$Rate, a$Years.On.Loan))) # Base Payment
+            }
+
             if( !is.nan(payment) ){
                 T$Total.Big.Costs <- ((T$Total.Big.Costs + payment) - (purch * a$Rental.Rate));
                 #log("Paying", payment, "for", A[i,1], "which cost", purch, "after", renewal, "renewals");
@@ -169,6 +183,7 @@ calculateAssetCosts <- function(T){
     return (T);
 }
 
+# The primary function, this oversees the flow of data.
 calculateThisMonth <- function(T){
     T <- (calculateIncomeTaxAndRetirement(T));
     T <- (calculateSetCosts(T));
@@ -183,22 +198,32 @@ calculateThisMonth <- function(T){
 }
 
 # For each month from now until I die
-TArray <- data.frame();
 timeLength <- (V$Life.Expectancy - V$Current.Age) * MONTHS_YEARLY;
+TArray <- data.frame();
 for ( i in 1:timeLength) {
     TArray <- rbind(TArray, calculateThisMonth(timeCalc(i)));
 }
-TArray$year <- NULL;
-print(TArray);
-plot(TArray$Leftover, col="red", ylim=c(0,50000), pch=20);
-points(TArray$Income, col="green", pch=20);
-points(TArray$Retirement, col="blue", pch=20);
-points(TArray$Total.Set.Costs, col="yellow", pch=20);
-points(TArray$Pocket.Spending, col="orange", pch=20);
-points(TArray$Savings, col="purple", pch=20);
-points(TArray$Total.Big.Costs, col="black", pch=20);
-legend('topleft', c('Leftover', 'Income', 'Retirement', 'Total Set Costs', 'Pocket Spending', 'Savings', 'Total Big Costs'), lty=c(1,1), lwd=c(2.5,2.5), col=c('red', 'green', 'blue', 'yellow', 'orange', 'purple', 'black'));
 
-plot(TArray$Retirement.Cumulative, col="green", ylim=c(0,20000000), pch=20);
+
+
+
+TArray$year <- NULL;
+TArray$Sale.Price <- NULL;
+print(TArray);
+plot(TArray$Leftover, col="green", pch=20);
+points(TArray$Income, col="yellow", pch=20);
+points(TArray$Total.Set.Costs, col="blue", pch=20);
+points(TArray$Pocket.Spending, col="orange", pch=20);
+points(TArray$Savings, col="gray", pch=20);
+points(TArray$Retirement, col="purple", pch=20);
+points(TArray$Total.Big.Costs, col="black", pch=20);
+legend('topleft', c('Leftover', 'Income', 'Total Set Costs', 'Pocket Spending', 'Retirement', 'Total Big Costs', 'Savings'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'yellow', 'blue', 'orange', 'purple', 'black', 'gray'));
+
+plot(TArray$Leftover, col="green", pch=20);
+points(TArray$Total.Big.Costs + TArray$Pocket.Spending + TArray$Total.Set.Costs, col="red", pch=20);
+legend('topleft', c('Leftover', 'Out'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'red'));
+
 plot(TArray$Savings.Cumulative, col="red", pch=20);
+plot(TArray$Salary, col="green", pch=20);
+plot(TArray$Retirement.Cumulative, col="green", ylim=c(0,20000000), pch=20);
 
