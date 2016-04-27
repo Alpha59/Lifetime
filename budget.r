@@ -1,5 +1,7 @@
 #!/usr/bin/env Rscript
 12 -> MONTHS_YEARLY;
+30.4375 -> DAYS_MONTHLY;
+4.348125 -> WEEKS_MONTHLY;
 exp(1) -> E;
 
 options(width = 280)
@@ -97,10 +99,10 @@ getPurch <- function(T, a, renewal){
 # Calculates the set costs accounting for an increase do to inflation.
 calculateSetCosts <- function(T){
     # Daily Expenses * 30
-    T$daily <- (yearlyIncreaseCalcExpo(sum(D$Expense), V$Inflation, T$year) * 30.4375);
+    T$daily <- (yearlyIncreaseCalcExpo(sum(D$Expense), V$Inflation, T$year) * DAYS_MONTHLY);
 
     # Weekly Expenses * 4
-    T$weekly <- (yearlyIncreaseCalcExpo(sum(W$Expense), V$Inflation, T$year) * 4.348125);
+    T$weekly <- (yearlyIncreaseCalcExpo(sum(W$Expense), V$Inflation, T$year) * WEEKS_MONTHLY);
 
     # Monthly Expenses
     T$monthly <- (yearlyIncreaseCalcExpo(sum(M$Expense), V$Inflation, T$year));
