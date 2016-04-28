@@ -4,21 +4,22 @@
 4.348125 -> WEEKS_MONTHLY;
 args <- commandArgs(trailingOnly = TRUE)
 exp(1) -> E;
+"config.xlsx" -> config
 
 options(width = 280)
 options(digits = 8)
 
 library(gdata, verbose=FALSE)
-A = read.xls("config.xlsx", sheet="Assets", verbose=FALSE);
+A = read.xls(config, sheet="Assets", verbose=FALSE);
 
-D = read.xls("config.xlsx", sheet="Daily", verbose=FALSE);
-W = read.xls("config.xlsx", sheet="Weekly", verbose=FALSE);
-M = read.xls("config.xlsx", sheet="Monthly", verbose=FALSE);
-Y = read.xls("config.xlsx", sheet="Yearly", verbose=FALSE);
-Y5 = read.xls("config.xlsx", sheet="5 Year");
+D = read.xls(config, sheet="Daily", verbose=FALSE);
+W = read.xls(config, sheet="Weekly", verbose=FALSE);
+M = read.xls(config, sheet="Monthly", verbose=FALSE);
+Y = read.xls(config, sheet="Yearly", verbose=FALSE);
+Y5 = read.xls(config, sheet="5 Year");
 
-V = read.xls("config.xlsx", sheet="Variables", verbose=FALSE);
-In = read.xls("config.xlsx", sheet="Income", verbose=FALSE);
+V = read.xls(config, sheet="Variables", verbose=FALSE);
+In = read.xls(config, sheet="Income", verbose=FALSE);
 
 C = data.frame(Savings.Cumulative=V$Savings.Initial, Retirement.Cumulative=V$Retirement.Initial);
 
@@ -104,7 +105,7 @@ timeCalc <- function(i){
     age <- floor(year + V$Current.Age);
     Savings.Cumulative <- 0;
     Retirement.Cumulative <- 0;
-    return (data.frame(MOY, year, age, Savings.Cumulative, Retirement.Cumulative));
+    return (data.frame(month, MOY, year, age, Savings.Cumulative, Retirement.Cumulative));
 }
 
 # Gets the purchase price a specific renewal (initial purchase is renewal 0)
@@ -118,19 +119,19 @@ getPurch <- function(T, a, renewal){
 # This function appears to work
 calculateSetCosts <- function(T){
     # Daily Expenses * 30
-    T$daily <- (inflate(sum(D$Expense), T) * DAYS_MONTHLY);
+    T$daily <- (inflate(sum(D$Expense * (D$End > T$age & T$age > D$Start)), T) * DAYS_MONTHLY);
 
     # Weekly Expenses * 4
-    T$weekly <- (inflate(sum(W$Expense), T) * WEEKS_MONTHLY);
+    T$weekly <- (inflate(sum(W$Expense * (W$End > T$age & T$age > W$Start)), T) * WEEKS_MONTHLY);
 
     # Monthly Expenses
-    T$monthly <- (inflate(sum(M$Expense), T));
+    T$monthly <- (inflate(sum(M$Expense * (M$End > T$age & T$age > M$Start)), T));
 
     # Yearly Expenses
-    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, inflate(sum(Y$Expense), T), 0));
+    T$Yearly <- (ifelse(T$MOY == V$Starting.Month + 2, inflate(sum(Y$Expense * (Y$End > T$age & T$age > Y$Start)), T), 0));
 
     # 5 Year Expenses
-    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), inflate(sum(Y5$Expense), T), 0));
+    T$Yearly5 <- (ifelse((T$MOY == V$Starting.Month + 4 && (T$year %% 5) == 0), inflate(sum(Y5$Expense * (Y5$End > T$age & T$age > Y5$Start)), T), 0));
 
     T$Total.Set.Costs <- (T$Yearly5 + T$Yearly + T$monthly + T$daily);
     return (T);
@@ -165,7 +166,7 @@ calculateIncomeTaxAndRetirement <- function(T){
 
 
 initialPurchase <- function(T, a, renewal, purch){
-    log("Making a purchase for", a[,1], purch, "at age", T$age, "With payments of", paymentCalc((purch - (purch * a$Down.Payment)), a$Rate, a$Years.On.Loan))
+    log(floor(T$month), "Making a purchase for", a[,1], purch, "at age", T$age, "With payments of", paymentCalc((purch - (purch * a$Down.Payment)), a$Rate, a$Years.On.Loan))
     return (max(0, (T$Total.Big.Costs + (purch * a$Down.Payment)) + (purch * a$Sales.Tax.Rate)))
 }
 
@@ -174,7 +175,7 @@ sellPurch <- function(T, years, a, renewal){
     T$Sale.Price <- max(0, yearlyIncreaseCalcExpo(purch, a$Appreciation, a$Renewal) * V$Total.Return.Post.Sale)
     remaining <- remainingCalc(getPurch(years,a,renewal-1), a$Rate, a$Years.On.Loan, a$Renewal);
     T$Total.Big.Costs <- ((T$Total.Big.Costs + remaining) - T$Sale.Price);
-    log("Selling a purchase", renewal-1, "for", a[,1], purch, "at age", T$age, "having sold the at", T$Sale.Price, "-", remaining, "=", T$Sale.Price-remaining);
+    log(floor(T$month), "Selling a purchase", renewal-1, "for", a[,1], purch, "at age", T$age, "having sold the at", T$Sale.Price, "-", remaining, "=", T$Sale.Price-remaining);
     return (T);
 }
 
@@ -183,7 +184,7 @@ calculateAssetCosts <- function(T){
     T$Sale.Price <- 0;
     for ( i in 1:nrow(A)){
         a <- A[i,];
-        renewal <- floor((T$age - a$Purchase.Age) / a$Renewal)
+        renewal <- min(floor((a$Max.Age - a$Purchase.Age) / a$Renewal), floor((T$age - a$Purchase.Age) / a$Renewal))
         years <- ((a$Purchase.Age + (a$Renewal * renewal)) - V$Current.Age);
 
         # If you are older than the purchase age
@@ -192,7 +193,7 @@ calculateAssetCosts <- function(T){
 	        #      ( 34  - 27 ) % 3 != 0
 	        #      ( 27  - 27 ) % 3 == 0
         # This logic appears to work
-        if(T$age >= a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1 && a$Final.Purchase.Age >= T$age){ # Renewal
+        if(T$age >= a$Purchase.Age && ((T$age - a$Purchase.Age) %% a$Renewal) == 0 && T$MOY == 1 && T$age < a$Max.Age){ # Renewal
             purch <- getPurch(T, a, renewal);
 
             # If you have already purchased this item in the past
@@ -216,13 +217,13 @@ calculateAssetCosts <- function(T){
 
             # Loan Amount on this asset
             Loan.Amount <- (purch - (purch * a$Down.Payment));
-            if(T$age <= (a$Purchase.Age + (renewal*a$Renewal) + a$Years.On.Loan)){
+            if(T$age <= (a$Purchase.Age + (renewal*a$Renewal) + a$Years.On.Loan) && T$age < a$Max.Age + a$Years.On.Loan){
                 payment <- (payment + (paymentCalc(Loan.Amount, a$Rate, a$Years.On.Loan))) # Base Payment
             }
             if(!is.nan(payment)){
                 T$Total.Big.Costs <- ((T$Total.Big.Costs + payment) - (purch * a$Rental.Rate));
                 if (!is.na(args[1]) && args[1] == "-a"){
-                    log("Paying", payment, "for", a[,1], "which cost", purch, ":", Loan.Amount, "after", renewal, "renewals");
+                    log(floor(T$month), "Paying", payment, "for", a[,1], "which cost", purch, ":", Loan.Amount, "after", renewal, "renewals");
                 }
             }
         }
@@ -245,6 +246,7 @@ calculateThisMonth <- function(T){
     return (T);
 }
 
+
 # For each month from now until I die
 # This function appears to work
 timeLength <- (V$Life.Expectancy - V$Current.Age) * MONTHS_YEARLY;
@@ -258,6 +260,7 @@ for ( i in 1:timeLength) {
 # Plots/Prints the data as needed:
 # This appears to work
 TArray$year <- NULL;
+TArray$month <- NULL;
 TArray$Sale.Price <- NULL;
 print(TArray);
 age.range <- seq(from=V$Current.Age, to=V$Life.Expectancy, length.out=length(1:timeLength))
@@ -272,10 +275,28 @@ legend('topleft', c('Leftover', 'Income', 'Total Set Costs', 'Pocket Spending', 
 
 plot(age.range, TArray$Leftover, col="green", pch=20);
 points(age.range, TArray$Total.Big.Costs + TArray$Pocket.Spending + TArray$Total.Set.Costs, col="red", pch=20);
-points(age.range, inflate(4000, age.range - V$Current.Age))
-legend('topleft', c('Leftover', 'Out', '$4k'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'red', 'black'));
+points(age.range, inflate(TArray[1,]$Leftover, age.range - V$Current.Age))
+legend('topleft', c('Leftover', 'Out', '$ Power'), lty=c(1,1), lwd=c(2.5,2.5), col=c('green', 'red', 'black'));
 
 plot(age.range, TArray$Savings.Cumulative, col="red", pch=20);
 plot(age.range, TArray$Salary, col="green", pch=20);
 plot(age.range, TArray$Retirement.Cumulative, col="green", ylim=c(0,20000000), pch=20);
 
+# This generates a graph comparing the remaining balance on the loan- and the expected resale value of an item (Price independent).
+if ( TRUE ){
+    v <- r <- p <- list();
+    y <- 5;
+    seq2 <- seq(from=0, to=y, length.out=(y*365));
+    for ( i in seq2 ) {
+        r <- c(r, remainingCalc(1000000, .05, y, i));
+        v <- c(v, yearlyIncreaseCalcExpo(1000000, -.15, i));
+    }
+
+    for ( i in 1:(y*365)){
+        p <- c(p, v[[i]] - r[[i]]);
+    }
+
+    plot(seq2, r, col="red");
+    points(seq2, p, col="yellow");
+    points(seq2, v, col="green");
+}
